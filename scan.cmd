@@ -1,43 +1,44 @@
 @echo off
 setlocal enabledelayedexpansion
-title Scan Folder Setup
 
-:: 1. ตรวจสอบชื่อเครื่อง
-set "COMPNAME=%COMPUTERNAME%"
-echo Computer Name: %COMPNAME%
+:: --- Get Computer Name ---
+set "COMPUTERNAME=%COMPUTERNAME%"
+echo Computer Name: %COMPUTERNAME%
 
-:: 2. ตรวจสอบ Documents\Scan
-set "SCANFOLDER=%USERPROFILE%\Documents\Scan"
-if exist "%SCANFOLDER%" (
-    echo [INFO] Folder Scan exists in Documents.
-) else (
-    echo [INFO] Creating folder Scan in Documents...
+:: --- Set Scan folder path ---
+set "USERDOCS=%USERPROFILE%\Documents"
+set "SCANFOLDER=%USERDOCS%\Scan"
+
+:: --- Check if Scan folder exists ---
+if not exist "%SCANFOLDER%" (
+    echo [INFO] Scan folder not found. Creating...
     mkdir "%SCANFOLDER%"
+) else (
+    echo [INFO] Scan folder exists.
 )
 
-:: 3. ตั้ง NTFS permission (Everyone Full Control)
+:: --- Set NTFS permissions (Everyone Full Control) ---
 echo [INFO] Setting NTFS permissions...
-icacls "%SCANFOLDER%" /grant Everyone:F /T /C
+powershell -Command "icacls '%SCANFOLDER%' /grant Everyone:(OI)(CI)F /T"
 
-:: 4. ตรวจสอบแชร์
+:: --- Check if folder is shared ---
 set "SHARENAME=Scan"
-net share | findstr /i "\\%COMPNAME%\%SHARENAME%" >nul
+net share | findstr /i "%SHARENAME%" >nul
 if %errorlevel%==0 (
-    echo [INFO] Share %SHARENAME% already exists.
+    echo [INFO] Share already exists.
 ) else (
-    echo [INFO] Creating share %SHARENAME%...
-    net share %SHARENAME%="%SCANFOLDER%" /GRANT:Everyone,FULL
+    echo [INFO] Creating SMB share...
+    powershell -Command "New-SmbShare -Name '%SHARENAME%' -Path '%SCANFOLDER%' -FullAccess 'Everyone'"
 )
 
-:: 5. ตั้ง Shortcut ไปยัง \\ComputerName\Scan
-set "DESKTOP=%USERPROFILE%\Desktop"
-set "SHORTCUT=%DESKTOP%\Scan.lnk"
-if exist "%SHORTCUT%" (
-    echo [INFO] Shortcut already exists.
-) else (
-    echo [INFO] Creating shortcut on Desktop...
-    powershell -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT%');$s.TargetPath='\\\\%COMPNAME%\\%SHARENAME%';$s.Save()"
-)
+:: --- Set Share Permissions (Everyone Full Control) ---
+echo [INFO] Setting share permissions...
+powershell -Command "Get-SmbShare -Name '%SHARENAME%' | Set-SmbShare -FullAccess Everyone"
 
-echo [DONE] Scan folder setup completed.
+:: --- Create Shortcut on Desktop ---
+set "SHORTCUT=%USERPROFILE%\Desktop\Scan.lnk"
+echo [INFO] Creating shortcut on Desktop...
+powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%SHORTCUT%'); $Shortcut.TargetPath = '\\%COMPUTERNAME%\%SHARENAME%'; $Shortcut.Save()"
+
+echo [DONE] Scan folder ready and shortcut created.
 pause
