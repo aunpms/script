@@ -1,9 +1,9 @@
 @echo off
 setlocal
-title Smart Setup: Localhost Scan Folder Auto-Fix (v3.5)
+title Smart Setup: Localhost Scan Folder Auto-Fix (v3.5.1)
 
 echo =================================================================
-echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.5)
+echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.5.1)
 echo =================================================================
 echo.
 
@@ -75,15 +75,17 @@ if %errorlevel% neq 0 (
 :: -----------------------------------------------------------------
 echo [STEP] Creating shortcut on Desktop...
 set "TargetLink=\\127.0.0.1\%ShareName%"
+set "TempVBS=%TEMP%\mkshortcut_%RANDOM%.vbs"
 (
     echo Set oWS = CreateObject("WScript.Shell")
     echo sLinkFile = "%ShortcutPath%"
     echo Set oLink = oWS.CreateShortcut(sLinkFile)
     echo oLink.TargetPath = "%TargetLink%"
     echo oLink.Save
-) > "%TEMP%\mkshortcut.vbs"
-cscript //nologo "%TEMP%\mkshortcut.vbs" >nul
-del "%TEMP%\mkshortcut.vbs" >nul
+) > "%TempVBS%"
+cscript //nologo "%TempVBS%" >nul
+timeout /t 1 >nul
+if exist "%TempVBS%" del "%TempVBS%" >nul 2>&1
 echo [OK] Shortcut created: "%ShortcutPath%"
 goto :DONE
 
@@ -93,7 +95,6 @@ goto :DONE
 :: -----------------------------------------------------------------
 :CHECK_PERMS
 echo [STEP] Checking permissions on existing share...
-:: ตรวจสิทธิ์ Share (ไม่มีวิธีตรง ต้อง reapply)
 net share %ShareName% /grant:everyone,full >nul 2>&1
 if %errorlevel% neq 0 (
     echo [WARN] Could not reapply share permission. May already be OK.
@@ -101,7 +102,6 @@ if %errorlevel% neq 0 (
     echo [OK] Share permissions confirmed.
 )
 
-:: ตรวจ NTFS Permission
 icacls "%TargetPath%" | find /i "Everyone" | find "F" >nul
 if %errorlevel% neq 0 (
     echo [FIX] Reapplying NTFS Full Control for Everyone...
@@ -110,18 +110,19 @@ if %errorlevel% neq 0 (
     echo [OK] NTFS permission already correct.
 )
 
-:: ตรวจ Shortcut
 if not exist "%ShortcutPath%" (
     echo [STEP] Creating missing shortcut...
+    set "TempVBS=%TEMP%\mkshortcut_%RANDOM%.vbs"
     (
         echo Set oWS = CreateObject("WScript.Shell")
         echo sLinkFile = "%ShortcutPath%"
         echo Set oLink = oWS.CreateShortcut(sLinkFile)
         echo oLink.TargetPath = "\\127.0.0.1\%ShareName%"
         echo oLink.Save
-    ) > "%TEMP%\mkshortcut.vbs"
-    cscript //nologo "%TEMP%\mkshortcut.vbs" >nul
-    del "%TEMP%\mkshortcut.vbs" >nul
+    ) > "%TempVBS%"
+    cscript //nologo "%TempVBS%" >nul
+    timeout /t 1 >nul
+    if exist "%TempVBS%" del "%TempVBS%" >nul 2>&1
     echo [OK] Shortcut created.
 ) else (
     echo [OK] Shortcut already exists.
