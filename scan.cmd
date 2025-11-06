@@ -1,8 +1,8 @@
 @echo off
-title Setup Scan Share (Smart Mode v10)
+title Setup Scan Share (Smart Logic v11)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
-echo  Smart Setup: Create or Verify "Scan" Shared Folder
+echo     Smart Setup: Verify or Create "Scan" Shared Folder
 echo =================================================================
 echo.
 
@@ -13,91 +13,110 @@ set "FolderName=Scan"
 set "FolderBaseDir=%USERPROFILE%\Documents"
 set "FullFolderPath=%FolderBaseDir%\%FolderName%"
 
-echo Target Folder: "%FullFolderPath%"
+echo Target Folder Path: "%FullFolderPath%"
 echo.
 
 :: -------------------------------
-:: Check if share exists (PowerShell)
+:: STEP 1 — Check if a share named "Scan" exists
 :: -------------------------------
 set "ExistingPath="
-for /f "usebackq delims=" %%P in (`powershell -NoProfile -Command "try { $s = Get-WmiObject -Class Win32_Share -Filter \"Name='%FolderName%'\" -ErrorAction SilentlyContinue; if ($s) { $s.Path } } catch {}"`) do (
-    set "ExistingPath=%%P"
+for /f "usebackq delims=" %%P in (
+  `powershell -NoProfile -Command "try { $s = Get-WmiObject -Class Win32_Share -Filter \"Name='%FolderName%'\" -ErrorAction SilentlyContinue; if ($s) { $s.Path } } catch {}"`
+) do (
+  set "ExistingPath=%%P"
 )
 
-if not defined ExistingPath (
-    echo [NOT FOUND] Share "%FolderName%" not found. Creating new one...
+if defined ExistingPath (
+    echo [FOUND] Shared folder "%FolderName%" already exists.
+    echo Share path: "%ExistingPath%"
+    echo.
+
+    :: -------------------------------
+    :: STEP 2 — Verify permissions
+    :: -------------------------------
+    echo Verifying Share permissions (Everyone = Full Control)...
+    net share "%FolderName%" /GRANT:Everyone,FULL >nul
+    echo [OK] Share permissions ensured.
+    echo.
+
+    echo Verifying NTFS permissions...
+    icacls "%ExistingPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+    echo [OK] NTFS permissions ensured.
+    echo.
+
+    goto CREATE_SHORTCUT
+) else (
+    echo [NOT FOUND] No existing share named "%FolderName%".
+    echo Creating new folder and share...
+    echo.
+
+    :: -------------------------------
+    :: STEP 3 — Create folder if missing
+    :: -------------------------------
     if not exist "%FullFolderPath%" (
         mkdir "%FullFolderPath%" >nul 2>&1
         if exist "%FullFolderPath%" (
             echo [OK] Folder created: "%FullFolderPath%"
         ) else (
-            echo [FAIL] Could not create folder. Exiting.
+            echo [FAIL] Could not create folder.
             goto END
         )
     ) else (
-        echo [OK] Folder already exists.
+        echo [OK] Folder already exists: "%FullFolderPath%"
     )
-    echo Sharing folder...
+    echo.
+
+    :: -------------------------------
+    :: STEP 4 — Create the share
+    :: -------------------------------
+    echo Sharing folder as "%FolderName%"...
     net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
     if %ERRORLEVEL% equ 0 (
-        echo [OK] Shared successfully as "%FolderName%"
+        echo [OK] Shared successfully.
     ) else (
-        echo [FAIL] Failed to share folder. Check permissions.
+        echo [FAIL] Failed to share folder.
         goto END
     )
-) else (
-    echo [FOUND] Share "%FolderName%" exists.
-    echo Checking path and permissions...
-    for /f "tokens=* delims= " %%T in ("%ExistingPath%") do set "ExistingPath=%%T"
-    echo   - Share Path: "%ExistingPath%"
-    echo   - Expected Path: "%FullFolderPath%"
     echo.
-    if /I "%ExistingPath%" NEQ "%FullFolderPath%" (
-        echo [WARN] Path mismatch, updating share...
-        net share "%FolderName%" /delete /Y >nul
-        net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
-        echo [OK] Recreated share with correct path.
-    ) else (
-        echo [OK] Path correct. Checking permissions...
-        net share "%FolderName%" /GRANT:Everyone,FULL >nul
-        echo [OK] Permissions enforced (Everyone = Full Control)
-    )
+
+    :: -------------------------------
+    :: STEP 5 — Set NTFS permissions
+    :: -------------------------------
+    echo Setting NTFS permissions (Everyone Full Control)...
+    icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+    echo [OK] NTFS permissions set.
+    echo.
 )
-echo.
 
 :: -------------------------------
-:: Set NTFS permissions
+:: STEP 6 — Create Desktop Shortcut
 :: -------------------------------
-echo Verifying NTFS permissions...
-icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
-echo [OK] NTFS permissions enforced (Everyone = Full Control)
-echo.
-
-:: -------------------------------
-:: Create Desktop Shortcut
-:: -------------------------------
-echo Creating shortcut on desktop...
+:CREATE_SHORTCUT
+echo Creating shortcut "Scan" on Desktop...
 powershell -NoProfile -Command ^
   "$desktop = [Environment]::GetFolderPath('Desktop');" ^
   "$link = Join-Path $desktop 'Scan.lnk';" ^
-  "$s = (New-Object -COM WScript.Shell).CreateShortcut($link);" ^
-  "$s.TargetPath = '%FullFolderPath%'; $s.Save();" >nul
+  "$shell = New-Object -ComObject WScript.Shell;" ^
+  "$shortcut = $shell.CreateShortcut($link);" ^
+  "$shortcut.TargetPath = '%FullFolderPath%';" ^
+  "$shortcut.Save();" >nul
+
 if %ERRORLEVEL% equ 0 (
     echo [OK] Shortcut created on Desktop.
 ) else (
-    echo [FAIL] Could not create shortcut.
+    echo [WARN] Could not create shortcut.
 )
 echo.
 
 :: -------------------------------
-:: Open Advanced Sharing Settings
+:: STEP 7 — Open Advanced Sharing Settings
 :: -------------------------------
 echo Opening Advanced Network and Sharing Settings...
 control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
 echo.
 
 echo =================================================================
-echo === All operations completed successfully ===
+echo === All tasks completed successfully ===
 echo =================================================================
 pause
 endlocal
