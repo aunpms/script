@@ -1,82 +1,43 @@
 @echo off
-:: -------------------------------
-:: Scan Folder Setup (Auto-Elevate)
-:: -------------------------------
+setlocal enabledelayedexpansion
+title Scan Folder Setup
 
-:: ตรวจสอบ Admin
-net session >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [INFO] Admin rights required. Relaunching as Admin...
-    powershell -Command "Start-Process '%~f0' -Verb RunAs"
-    exit /b
-)
+:: 1. ตรวจสอบชื่อเครื่อง
+set "COMPNAME=%COMPUTERNAME%"
+echo Computer Name: %COMPNAME%
 
-:: --------------------------------------------------
-:: กำหนดตัวแปร
-:: --------------------------------------------------
-set "SHARE_NAME=Scan"
-set "LOCAL_PATH=%USERPROFILE%\Documents\Scan"
-set "NETWORK_PATH=\\127.0.0.1\%SHARE_NAME%"
-set "SHORTCUT_PATH=%USERPROFILE%\Desktop\Scan.lnk"
-
-:: --------------------------------------------------
-:: ตรวจสอบ Share
-:: --------------------------------------------------
-net share %SHARE_NAME% >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    echo [INFO] Share %SHARE_NAME% exists.
+:: 2. ตรวจสอบ Documents\Scan
+set "SCANFOLDER=%USERPROFILE%\Documents\Scan"
+if exist "%SCANFOLDER%" (
+    echo [INFO] Folder Scan exists in Documents.
 ) else (
-    echo [INFO] Share %SHARE_NAME% not found.
+    echo [INFO] Creating folder Scan in Documents...
+    mkdir "%SCANFOLDER%"
 )
 
-:: --------------------------------------------------
-:: ตรวจสอบ Network Folder
-:: --------------------------------------------------
-if exist "%NETWORK_PATH%" (
-    echo [INFO] Network folder exists.
-) else (
-    echo [INFO] Network folder not found. Checking local folder...
-    if not exist "%LOCAL_PATH%" (
-        echo [INFO] Local folder not found. Creating...
-        mkdir "%LOCAL_PATH%"
-    ) else (
-        echo [INFO] Local folder exists.
-    )
-    echo [INFO] Creating share...
-    net share %SHARE_NAME%="%LOCAL_PATH%"
-)
-
-:: --------------------------------------------------
-:: ตั้ง NTFS Permission
-:: --------------------------------------------------
+:: 3. ตั้ง NTFS permission (Everyone Full Control)
 echo [INFO] Setting NTFS permissions...
-icacls "%LOCAL_PATH%" /grant Everyone:(OI)(CI)F /T /C
+icacls "%SCANFOLDER%" /grant Everyone:F /T /C
 
-:: --------------------------------------------------
-:: ตั้ง Share Permission แบบครอบคลุมทุกเครื่อง
-:: --------------------------------------------------
-echo [INFO] Setting share permissions...
-powershell -NoProfile -Command ^
-"Try { ^
-    if (Get-Command Set-SmbShare -ErrorAction SilentlyContinue) { ^
-        Set-SmbShare -Name '%SHARE_NAME%' -FullAccess 'Everyone' -ErrorAction Stop ^
-    } else { ^
-        Write-Host '[WARN] Set-SmbShare not available. Windows Home edition?' ^
-    } ^
-} Catch { ^
-    Write-Host '[WARN] Cannot set share permissions automatically. Admin rights required or unsupported edition.' ^
-}"
+:: 4. ตรวจสอบแชร์
+set "SHARENAME=Scan"
+net share | findstr /i "\\%COMPNAME%\%SHARENAME%" >nul
+if %errorlevel%==0 (
+    echo [INFO] Share %SHARENAME% already exists.
+) else (
+    echo [INFO] Creating share %SHARENAME%...
+    net share %SHARENAME%="%SCANFOLDER%" /GRANT:Everyone,FULL
+)
 
-:: --------------------------------------------------
-:: สร้าง Shortcut บน Desktop
-:: --------------------------------------------------
-echo [INFO] Creating shortcut on Desktop...
-powershell -NoProfile -Command ^
-"$WshShell = New-Object -ComObject WScript.Shell; ^
-$Shortcut = $WshShell.CreateShortcut('%SHORTCUT_PATH%'); ^
-$Shortcut.TargetPath='%NETWORK_PATH%'; ^
-$Shortcut.WorkingDirectory='%NETWORK_PATH%'; ^
-$Shortcut.Save()"
+:: 5. ตั้ง Shortcut ไปยัง \\ComputerName\Scan
+set "DESKTOP=%USERPROFILE%\Desktop"
+set "SHORTCUT=%DESKTOP%\Scan.lnk"
+if exist "%SHORTCUT%" (
+    echo [INFO] Shortcut already exists.
+) else (
+    echo [INFO] Creating shortcut on Desktop...
+    powershell -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT%');$s.TargetPath='\\\\%COMPNAME%\\%SHARENAME%';$s.Save()"
+)
 
-echo [DONE] Setup complete.
-exit /b
+echo [DONE] Scan folder setup completed.
+pause
