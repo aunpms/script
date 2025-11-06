@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.6 - Parser Proof)
+title Setup Scan Share (Smart Logic v11.7 - Powershell Safe)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -123,9 +123,10 @@ for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
 exit /b
 
 :: -------------------------------------------------
-:: Function: SetNTFSPerms
+:: Function: SetNTFSPerms  (now using PowerShell)
 :: -------------------------------------------------
 :SetNTFSPerms
 echo Applying NTFS permissions to: %~1
-icacls "%~1" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+powershell -NoProfile -Command ^
+  "Start-Process icacls -ArgumentList '\"%~1\" /grant Everyone:(OI)(CI)F /T' -Wait -WindowStyle Hidden" >nul 2>&1
 exit /b
