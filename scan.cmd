@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11)
+title Setup Scan Share (Smart Logic v11.1)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -31,9 +31,6 @@ if defined ExistingPath (
     echo Share path: "%ExistingPath%"
     echo.
 
-    :: -------------------------------
-    :: STEP 2 — Verify permissions
-    :: -------------------------------
     echo Verifying Share permissions (Everyone = Full Control)...
     net share "%FolderName%" /GRANT:Everyone,FULL >nul
     echo [OK] Share permissions ensured.
@@ -50,9 +47,6 @@ if defined ExistingPath (
     echo Creating new folder and share...
     echo.
 
-    :: -------------------------------
-    :: STEP 3 — Create folder if missing
-    :: -------------------------------
     if not exist "%FullFolderPath%" (
         mkdir "%FullFolderPath%" >nul 2>&1
         if exist "%FullFolderPath%" (
@@ -66,9 +60,6 @@ if defined ExistingPath (
     )
     echo.
 
-    :: -------------------------------
-    :: STEP 4 — Create the share
-    :: -------------------------------
     echo Sharing folder as "%FolderName%"...
     net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
     if %ERRORLEVEL% equ 0 (
@@ -79,9 +70,6 @@ if defined ExistingPath (
     )
     echo.
 
-    :: -------------------------------
-    :: STEP 5 — Set NTFS permissions
-    :: -------------------------------
     echo Setting NTFS permissions (Everyone Full Control)...
     icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
     echo [OK] NTFS permissions set.
@@ -89,17 +77,11 @@ if defined ExistingPath (
 )
 
 :: -------------------------------
-:: STEP 6 — Create Desktop Shortcut
+:: STEP 6 — Create Desktop Shortcut (Safe one-liner)
 :: -------------------------------
 :CREATE_SHORTCUT
 echo Creating shortcut "Scan" on Desktop...
-powershell -NoProfile -Command ^
-  "$desktop = [Environment]::GetFolderPath('Desktop');" ^
-  "$link = Join-Path $desktop 'Scan.lnk';" ^
-  "$shell = New-Object -ComObject WScript.Shell;" ^
-  "$shortcut = $shell.CreateShortcut($link);" ^
-  "$shortcut.TargetPath = '%FullFolderPath%';" ^
-  "$shortcut.Save();" >nul
+powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop');$s=New-Object -ComObject WScript.Shell;$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));$l.TargetPath='%FullFolderPath%';$l.Save()" >nul 2>&1
 
 if %ERRORLEVEL% equ 0 (
     echo [OK] Shortcut created on Desktop.
