@@ -1,122 +1,46 @@
 @echo off
-setlocal enabledelayedexpansion
-title Smart Localhost Scan Share Auto-Fix (v5.0)
+setlocal
+title Scan Folder Setup
 
-echo ================================================================
-echo   Smart Localhost Scan Share Auto-Fix (v5.0)
-echo ================================================================
-echo.
+set "SHARE_NAME=Scan"
+set "LOCAL_PATH=%USERPROFILE%\Documents\Scan"
+set "NETWORK_PATH=\\127.0.0.1\%SHARE_NAME%"
+set "SHORTCUT_PATH=%USERPROFILE%\Desktop\Scan.lnk"
 
-:: -----------------------------
-:: 1. ตรวจสอบสิทธิ์ Admin
-:: -----------------------------
-echo Checking for Administrator privileges...
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [FAIL] Administrator privileges not found.
-    echo Requesting elevation (UAC prompt will appear)...
-    set "VBS_ELEVATE=%TEMP%\elevate_%RANDOM%.vbs"
-    (
-        echo Set UAC = CreateObject("Shell.Application")
-        echo UAC.ShellExecute "%~f0", "", "", "runas", 1
-    ) > "%VBS_ELEVATE%"
-    cscript //nologo "%VBS_ELEVATE%" >nul 2>&1
-    del "%VBS_ELEVATE%" >nul 2>&1
-    exit /b
-)
-echo [OK] Administrator privileges detected.
-echo.
-
-:: -----------------------------
-:: 2. ตรวจสอบว่ามี Scan share อยู่แล้ว
-:: -----------------------------
-set "ScanShare=\\127.0.0.1\Scan"
-set "ScanFolder="
-
-for /f "skip=2 tokens=1" %%A in ('net view \\127.0.0.1 ^| findstr /I "Scan"') do (
-    if /I "%%A"=="Scan" (
-        set "ScanExists=1"
-    )
+:: ตรวจสอบ Share
+net share %SHARE_NAME% >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [INFO] Share %SHARE_NAME% exists.
+) else (
+    echo [INFO] Share %SHARE_NAME% not found.
 )
 
-if defined ScanExists (
-    echo [FOUND] %ScanShare% already exists.
-    for /f "skip=2 tokens=1,*" %%A in ('net share ^| findstr /I "^Scan"') do set "ScanFolder=%%B"
-    if not defined ScanFolder (
-        echo [WARN] Could not determine physical path of Scan share.
-        set "ScanFolder=%USERPROFILE%\Documents\Scan"
+:: ตรวจสอบ Network Folder
+if exist "%NETWORK_PATH%" (
+    echo [INFO] Network folder exists.
+) else (
+    echo [INFO] Network folder not found. Checking local folder...
+    if not exist "%LOCAL_PATH%" (
+        echo [INFO] Local folder not found. Creating...
+        mkdir "%LOCAL_PATH%"
     ) else (
-        echo [INFO] Physical path: !ScanFolder!
+        echo [INFO] Local folder exists.
     )
-) else (
-    echo [MISSING] Shared folder "Scan" not found.
-    set "ScanFolder=%USERPROFILE%\Documents\Scan"
-    echo Creating new folder at "!ScanFolder!"...
-    if not exist "!ScanFolder!" mkdir "!ScanFolder!" >nul 2>&1
-    echo Sharing folder as "Scan"...
-    net share Scan="!ScanFolder!" /grant:Everyone,full >nul 2>&1
-    if %errorlevel% neq 0 (
-        echo [ERROR] Failed to create shared folder.
-        pause
-        exit /b 1
-    )
-    echo [OK] Shared folder created: %ScanShare%
+    echo [INFO] Creating share...
+    net share %SHARE_NAME%="%LOCAL_PATH%"
 )
 
-:: -----------------------------
-:: 3. ตั้งสิทธิ์ NTFS ให้ Everyone Full Control
-:: -----------------------------
-echo [STEP] Setting NTFS permissions for Everyone (Full Control)...
-icacls "!ScanFolder!" /grant Everyone:"(OI)(CI)F" /T >nul
-if %errorlevel% equ 0 (
-    echo [OK] NTFS permissions set.
-) else (
-    echo [WARN] Failed to apply NTFS permissions.
-)
+:: ตั้ง NTFS Permission
+echo [INFO] Setting NTFS permissions...
+icacls "%LOCAL_PATH%" /grant Everyone:(OI)(CI)F /T /C
 
-:: -----------------------------
-:: 4. ตรวจสอบ Share Permission (Advanced Sharing)
-:: -----------------------------
-echo [STEP] Verifying Share Permissions...
-net share Scan | find /I "Everyone" >nul
-if %errorlevel% neq 0 (
-    echo [FIX] Adding Everyone Full Control to Share Permissions...
-    net share Scan /grant:Everyone,full >nul 2>&1
-)
-echo [OK] Share Permissions verified.
+:: ตั้ง Share Permission (ใช้ PowerShell)
+echo [INFO] Setting share permissions...
+powershell -Command "Try {Set-SmbShare -Name '%SHARE_NAME%' -FullAccess 'Everyone' -ErrorAction Stop} Catch {Write-Host '[WARN] Cannot set share permissions automatically. Admin rights required or unsupported edition.'}"
 
-:: -----------------------------
-:: 5. สร้าง Shortcut บน Desktop
-:: -----------------------------
-echo [STEP] Creating shortcut on Desktop...
-set "ShortcutFile=%USERPROFILE%\Desktop\Scan.lnk"
-set "VBSFile=%TEMP%\mkshortcut.vbs"
+:: สร้าง Shortcut
+echo [INFO] Creating shortcut on Desktop...
+powershell -NoProfile -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%SHORTCUT_PATH%'); $Shortcut.TargetPath='%NETWORK_PATH%'; $Shortcut.WorkingDirectory='%NETWORK_PATH%'; $Shortcut.Save()"
 
-(
-    echo Set oWS = CreateObject("WScript.Shell")
-    echo sLinkFile = "%ShortcutFile%"
-    echo Set oLink = oWS.CreateShortcut(sLinkFile)
-    echo oLink.TargetPath = "%ScanShare%"
-    echo oLink.IconLocation = "imageres.dll,3"
-    echo oLink.Save
-) > "%VBSFile%"
-
-cscript //nologo "%VBSFile%" >nul 2>&1
-del "%VBSFile%" >nul 2>&1
-
-if exist "%ShortcutFile%" (
-    echo [OK] Shortcut created: "%ShortcutFile%"
-) else (
-    echo [ERROR] Failed to create shortcut.
-)
-
-:: -----------------------------
-:: 6. จบการทำงาน
-:: -----------------------------
-echo.
-echo ================================================================
-echo   All tasks completed successfully.
-echo   You can now open: %ScanShare%
-echo ================================================================
+echo [DONE] Setup complete.
 pause
-exit /b 0
