@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.1)
+title Setup Scan Share (Smart Logic v11.2)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -20,8 +20,9 @@ echo.
 :: STEP 1 — Check if a share named "Scan" exists
 :: -------------------------------
 set "ExistingPath="
+
 for /f "usebackq delims=" %%P in (
-  `powershell -NoProfile -Command "try { $s = Get-WmiObject -Class Win32_Share -Filter \"Name='%FolderName%'\" -ErrorAction SilentlyContinue; if ($s) { $s.Path } } catch {}"`
+  `powershell -NoProfile -Command "try { $s = Get-WmiObject -Class Win32_Share -Filter 'Name=\"%FolderName%\"' -ErrorAction SilentlyContinue; if ($s) { $s.Path } } catch {}"`
 ) do (
   set "ExistingPath=%%P"
 )
@@ -77,11 +78,15 @@ if defined ExistingPath (
 )
 
 :: -------------------------------
-:: STEP 6 — Create Desktop Shortcut (Safe one-liner)
+:: STEP 6 — Create Desktop Shortcut (Safe One-Liner)
 :: -------------------------------
 :CREATE_SHORTCUT
 echo Creating shortcut "Scan" on Desktop...
-powershell -NoProfile -Command "$d=[Environment]::GetFolderPath('Desktop');$s=New-Object -ComObject WScript.Shell;$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));$l.TargetPath='%FullFolderPath%';$l.Save()" >nul 2>&1
+powershell -NoProfile -Command ^
+  "$d=[Environment]::GetFolderPath('Desktop');" ^
+  "$s=New-Object -ComObject WScript.Shell;" ^
+  "$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));" ^
+  "$l.TargetPath='%FullFolderPath%';$l.Save()" >nul 2>&1
 
 if %ERRORLEVEL% equ 0 (
     echo [OK] Shortcut created on Desktop.
@@ -94,7 +99,7 @@ echo.
 :: STEP 7 — Open Advanced Sharing Settings
 :: -------------------------------
 echo Opening Advanced Network and Sharing Settings...
-control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
+start "" control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
 echo.
 
 echo =================================================================
