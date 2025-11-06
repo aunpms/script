@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.4 - Stable)
+title Setup Scan Share (Smart Logic v11.5 - Parser Safe)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -37,7 +37,7 @@ if %ERRORLEVEL% equ 0 (
         echo.
 
         echo Verifying NTFS permissions...
-        icacls "%ExistingPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+        icacls "%ExistingPath%" /grant Everyone:^(OI^)(CI^)F /T >nul 2>&1
         echo [OK] NTFS permissions ensured.
         echo.
     )
@@ -73,7 +73,7 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 echo Setting NTFS permissions...
-icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+icacls "%FullFolderPath%" /grant Everyone:^(OI^)(CI^)F /T >nul 2>&1
 echo [OK] NTFS permissions set.
 echo.
 
@@ -113,7 +113,6 @@ exit /b
 
 :: -------------------------------------------------
 :: Function: GetExistingPath
-:: Purpose : Extract the shared folder path by name
 :: -------------------------------------------------
 :GetExistingPath
 set "ExistingPath="
