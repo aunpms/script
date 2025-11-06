@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (v5 - English Fix)
+title Setup Scan Share (v6 - English Fix + Findstr Fix)
 :: No CHCP needed for English
 
 echo =================================================================
@@ -12,13 +12,17 @@ set "FolderName=Scan"
 set "FolderBaseDir=%USERPROFILE%\Documents"
 set "FullFolderPath=%FolderBaseDir%\%FolderName%"
 set "ExistingPath="
+set "ShareListFile=%TEMP%\sharelist_%RANDOM%.txt"
 
 echo Target folder: "%FullFolderPath%"
 echo.
 
 :: 2. Check if "Scan" share already exists
 echo Checking if share name "%FolderName%" already exists...
-net share | findstr /I /C:"%FolderName% " > nul
+
+:: [FIX] Use a temp file instead of a pipe (|) for reliability
+net share > "%ShareListFile%"
+findstr /I /C:"%FolderName% " "%ShareListFile%" > nul
 
 if %ERRORLEVEL% equ 0 (
     :: 2.1 If "Scan" share exists
@@ -28,7 +32,6 @@ if %ERRORLEVEL% equ 0 (
     echo Checking existing share path...
     
     :: [FIX] Use 'skip=1' and 'tokens=1,*' to get the 2nd line (the path)
-    :: This works regardless of the OS language.
     for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName%') do (
         set "ExistingPath=%%b"
         goto :GotPath
@@ -143,4 +146,6 @@ echo === Operation Completed ===
 echo =================================================================
 
 :END_SCRIPT
+:: Clean up the temp file
+if exist "%ShareListFile%" del "%ShareListFile%"
 pause
