@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.3 - Stable)
+title Setup Scan Share (Smart Logic v11.4 - Stable)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -26,63 +26,57 @@ if %ERRORLEVEL% equ 0 (
     echo [FOUND] Shared folder "%FolderName%" already exists.
     echo.
 
-    :: Get the existing shared path
-    for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName% 2^>nul') do (
-        set "ExistingPath=%%b"
-        goto GotPath
-    )
-    :GotPath
+    call :GetExistingPath "%FolderName%"
     if defined ExistingPath (
-        for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
         echo Share path: "%ExistingPath%"
+        echo.
+
+        echo Verifying Share permissions...
+        net share "%FolderName%" /GRANT:Everyone,FULL >nul
+        echo [OK] Share permissions ensured.
+        echo.
+
+        echo Verifying NTFS permissions...
+        icacls "%ExistingPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+        echo [OK] NTFS permissions ensured.
+        echo.
     )
-    echo.
-
-    echo Verifying Share permissions...
-    net share "%FolderName%" /GRANT:Everyone,FULL >nul
-    echo [OK] Share permissions ensured.
-    echo.
-
-    echo Verifying NTFS permissions...
-    icacls "%ExistingPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
-    echo [OK] NTFS permissions ensured.
-    echo.
-
     del "%ShareTemp%" >nul 2>&1
     goto CREATE_SHORTCUT
-) else (
-    echo [NOT FOUND] No share named "%FolderName%" found.
-    echo Creating folder and new share...
-    echo.
+)
 
-    if not exist "%FullFolderPath%" (
-        mkdir "%FullFolderPath%" >nul 2>&1
-        if exist "%FullFolderPath%" (
-            echo [OK] Folder created: "%FullFolderPath%"
-        ) else (
-            echo [FAIL] Could not create folder.
-            goto END
-        )
-    ) else (
-        echo [OK] Folder already exists: "%FullFolderPath%"
-    )
-    echo.
+echo [NOT FOUND] No share named "%FolderName%" found.
+echo Creating folder and new share...
+echo.
 
-    echo Sharing folder as "%FolderName%"...
-    net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
-    if %ERRORLEVEL% equ 0 (
-        echo [OK] Shared successfully.
+if not exist "%FullFolderPath%" (
+    mkdir "%FullFolderPath%" >nul 2>&1
+    if exist "%FullFolderPath%" (
+        echo [OK] Folder created: "%FullFolderPath%"
     ) else (
-        echo [FAIL] Failed to share folder.
+        echo [FAIL] Could not create folder.
         goto END
     )
-    echo.
-
-    echo Setting NTFS permissions...
-    icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
-    echo [OK] NTFS permissions set.
-    echo.
+) else (
+    echo [OK] Folder already exists: "%FullFolderPath%"
 )
+echo.
+
+echo Sharing folder as "%FolderName%"...
+net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
+if %ERRORLEVEL% equ 0 (
+    echo [OK] Shared successfully.
+) else (
+    echo [FAIL] Failed to share folder.
+    goto END
+)
+echo.
+
+echo Setting NTFS permissions...
+icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+echo [OK] NTFS permissions set.
+echo.
+
 del "%ShareTemp%" >nul 2>&1
 
 :: -------------------------------
@@ -115,3 +109,16 @@ echo === All tasks completed successfully ===
 echo =================================================================
 pause
 endlocal
+exit /b
+
+:: -------------------------------------------------
+:: Function: GetExistingPath
+:: Purpose : Extract the shared folder path by name
+:: -------------------------------------------------
+:GetExistingPath
+set "ExistingPath="
+for /f "skip=1 tokens=1,*" %%a in ('net share %~1 2^>nul') do (
+    if not defined ExistingPath set "ExistingPath=%%b"
+)
+for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
+exit /b
