@@ -1,16 +1,38 @@
 @echo off
 setlocal enabledelayedexpansion
-title Smart Localhost Scan Share Auto-Fix (v4.2)
+title Smart Localhost Scan Share Auto-Fix (v5.0)
 
 echo ================================================================
-echo   Smart Localhost Scan Share Auto-Fix (v4.2)
+echo   Smart Localhost Scan Share Auto-Fix (v5.0)
 echo ================================================================
 echo.
 
 :: -----------------------------
-:: 1. ตรวจสอบว่ามีแชร์อยู่แล้วหรือไม่
+:: 1. ตรวจสอบสิทธิ์ Admin
 :: -----------------------------
-echo [CHECK] Checking shared folder on \\127.0.0.1 ...
+echo Checking for Administrator privileges...
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [FAIL] Administrator privileges not found.
+    echo Requesting elevation (UAC prompt will appear)...
+    set "VBS_ELEVATE=%TEMP%\elevate_%RANDOM%.vbs"
+    (
+        echo Set UAC = CreateObject("Shell.Application")
+        echo UAC.ShellExecute "%~f0", "", "", "runas", 1
+    ) > "%VBS_ELEVATE%"
+    cscript //nologo "%VBS_ELEVATE%" >nul 2>&1
+    del "%VBS_ELEVATE%" >nul 2>&1
+    exit /b
+)
+echo [OK] Administrator privileges detected.
+echo.
+
+:: -----------------------------
+:: 2. ตรวจสอบว่ามี Scan share อยู่แล้ว
+:: -----------------------------
+set "ScanShare=\\127.0.0.1\Scan"
+set "ScanFolder="
+
 for /f "skip=2 tokens=1" %%A in ('net view \\127.0.0.1 ^| findstr /I "Scan"') do (
     if /I "%%A"=="Scan" (
         set "ScanExists=1"
@@ -18,35 +40,34 @@ for /f "skip=2 tokens=1" %%A in ('net view \\127.0.0.1 ^| findstr /I "Scan"') do
 )
 
 if defined ScanExists (
-    echo [FOUND] \\127.0.0.1\Scan already exists.
-    set "ScanFolder="
+    echo [FOUND] %ScanShare% already exists.
     for /f "skip=2 tokens=1,*" %%A in ('net share ^| findstr /I "^Scan"') do set "ScanFolder=%%B"
     if not defined ScanFolder (
         echo [WARN] Could not determine physical path of Scan share.
+        set "ScanFolder=%USERPROFILE%\Documents\Scan"
     ) else (
         echo [INFO] Physical path: !ScanFolder!
     )
 ) else (
     echo [MISSING] Shared folder "Scan" not found.
     set "ScanFolder=%USERPROFILE%\Documents\Scan"
-    echo Creating new folder at "%ScanFolder%"...
-    if not exist "%ScanFolder%" mkdir "%ScanFolder%" >nul 2>&1
+    echo Creating new folder at "!ScanFolder!"...
+    if not exist "!ScanFolder!" mkdir "!ScanFolder!" >nul 2>&1
     echo Sharing folder as "Scan"...
-    net share Scan="%ScanFolder%" /grant:Everyone,full >nul 2>&1
+    net share Scan="!ScanFolder!" /grant:Everyone,full >nul 2>&1
     if %errorlevel% neq 0 (
         echo [ERROR] Failed to create shared folder.
         pause
         exit /b 1
     )
-    echo [OK] Shared folder created: \\127.0.0.1\Scan
+    echo [OK] Shared folder created: %ScanShare%
 )
 
 :: -----------------------------
-:: 2. ตั้งสิทธิ์ NTFS ให้ Everyone Full Control
+:: 3. ตั้งสิทธิ์ NTFS ให้ Everyone Full Control
 :: -----------------------------
-if not defined ScanFolder set "ScanFolder=%USERPROFILE%\Documents\Scan"
 echo [STEP] Setting NTFS permissions for Everyone (Full Control)...
-icacls "%ScanFolder%" /grant Everyone:"(OI)(CI)F" /T >nul
+icacls "!ScanFolder!" /grant Everyone:"(OI)(CI)F" /T >nul
 if %errorlevel% equ 0 (
     echo [OK] NTFS permissions set.
 ) else (
@@ -54,7 +75,7 @@ if %errorlevel% equ 0 (
 )
 
 :: -----------------------------
-:: 3. ตรวจสอบ Share Permission (Advanced Sharing)
+:: 4. ตรวจสอบ Share Permission (Advanced Sharing)
 :: -----------------------------
 echo [STEP] Verifying Share Permissions...
 net share Scan | find /I "Everyone" >nul
@@ -65,7 +86,7 @@ if %errorlevel% neq 0 (
 echo [OK] Share Permissions verified.
 
 :: -----------------------------
-:: 4. สร้าง Shortcut บน Desktop ไปที่ \\127.0.0.1\Scan
+:: 5. สร้าง Shortcut บน Desktop
 :: -----------------------------
 echo [STEP] Creating shortcut on Desktop...
 set "ShortcutFile=%USERPROFILE%\Desktop\Scan.lnk"
@@ -75,7 +96,7 @@ set "VBSFile=%TEMP%\mkshortcut.vbs"
     echo Set oWS = CreateObject("WScript.Shell")
     echo sLinkFile = "%ShortcutFile%"
     echo Set oLink = oWS.CreateShortcut(sLinkFile)
-    echo oLink.TargetPath = "\\127.0.0.1\Scan"
+    echo oLink.TargetPath = "%ScanShare%"
     echo oLink.IconLocation = "imageres.dll,3"
     echo oLink.Save
 ) > "%VBSFile%"
@@ -90,11 +111,12 @@ if exist "%ShortcutFile%" (
 )
 
 :: -----------------------------
-:: 5. จบการทำงาน
+:: 6. จบการทำงาน
 :: -----------------------------
 echo.
 echo ================================================================
 echo   All tasks completed successfully.
-echo   You can now open: \\127.0.0.1\Scan
+echo   You can now open: %ScanShare%
 echo ================================================================
+pause
 exit /b 0
