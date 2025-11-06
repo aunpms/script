@@ -1,96 +1,137 @@
 @echo off
-setlocal enabledelayedexpansion
-title Smart Setup: Localhost Scan Folder Auto-Fix (v3.0)
+setlocal
+title Smart Setup: Localhost Scan Folder Auto-Fix (v3.5)
 
-echo.
-echo ================================================================
-echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.0)
-echo ================================================================
+echo =================================================================
+echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.5)
+echo =================================================================
 echo.
 
 set "ShareName=Scan"
-set "DefaultFolder=%USERPROFILE%\Documents\Scan"
-set "LocalPath=\\127.0.0.1\%ShareName%"
-set "TempShareList=%TEMP%\sharelist_%RANDOM%.txt"
+set "DefaultPath=%USERPROFILE%\Documents\%ShareName%"
+set "ShortcutPath=%USERPROFILE%\Desktop\%ShareName%.lnk"
 
-:: -------------------------------------------------------------
-:: STEP 1 - CHECK IF "Scan" SHARE ALREADY EXISTS
-:: -------------------------------------------------------------
+:: -----------------------------------------------------------------
+:: 1. ตรวจสอบว่ามีแชร์อยู่แล้วหรือไม่
+:: -----------------------------------------------------------------
 echo Checking existing shares on localhost...
-net view \\127.0.0.1 > "%TempShareList%" 2>nul
+for /f "tokens=1" %%A in ('net share ^| findstr /I "^%ShareName% "') do set FOUND=1
 
-findstr /I /R " %ShareName% " "%TempShareList%" >nul
-if %ERRORLEVEL% EQU 0 (
-    echo [FOUND] Shared folder "%ShareName%" exists on \\127.0.0.1
-    for /f "tokens=1,* delims= " %%a in ('net share %ShareName% ^| findstr /R /C:"Path"') do (
-        set "SharePath=%%b"
+if defined FOUND (
+    echo [FOUND] Shared folder "%ShareName%" already exists on \\127.0.0.1\%ShareName%.
+    set "FoundPath="
+    for /f "tokens=1,*" %%a in ('net share %ShareName% ^| findstr /I "Path"') do set "FoundPath=%%b"
+    if defined FoundPath (
+        echo Share path detected: "%FoundPath%"
+        set "TargetPath=%FoundPath%"
+    ) else (
+        echo [WARN] Could not detect share path, will reapply permissions.
+        set "TargetPath=%DefaultPath%"
     )
-    set "SharePath=!SharePath:~0!"
-    echo Share path: "!SharePath!"
-    goto :CHECK_PERMISSIONS
-) else (
-    echo [MISSING] Shared folder "%ShareName%" not found.
-    echo Creating new shared folder at "%DefaultFolder%"...
-    if not exist "%DefaultFolder%" mkdir "%DefaultFolder%" >nul 2>&1
-    net share %ShareName%="%DefaultFolder%" /GRANT:Everyone,FULL >nul
-    if %ERRORLEVEL% NEQ 0 (
-        echo [ERROR] Failed to create shared folder "%ShareName%".
+    goto :CHECK_PERMS
+)
+
+:: -----------------------------------------------------------------
+:: 2. ไม่เจอแชร์ -> สร้างโฟลเดอร์ใหม่
+:: -----------------------------------------------------------------
+echo [MISSING] Shared folder "%ShareName%" not found.
+echo Creating new shared folder at "%DefaultPath%"...
+if not exist "%DefaultPath%" (
+    mkdir "%DefaultPath%" 2>nul
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to create folder "%DefaultPath%".
         pause
         exit /b
     )
-    set "SharePath=%DefaultFolder%"
-    echo [OK] Shared folder created successfully.
+)
+set "TargetPath=%DefaultPath%"
+
+:: ลบ share เดิมถ้ามีค้างในระบบ
+net share %ShareName% /delete >nul 2>&1
+
+:: แชร์ใหม่
+net share %ShareName%="%TargetPath%" /grant:everyone,full >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Failed to create shared folder "%ShareName%".
+    pause
+    exit /b
+) else (
+    echo [OK] Shared folder created and available as \\127.0.0.1\%ShareName%
 )
 
-del "%TempShareList%" >nul 2>&1
-echo.
-
-:: -------------------------------------------------------------
-:: STEP 2 - CHECK & FIX PERMISSIONS
-:: -------------------------------------------------------------
-:CHECK_PERMISSIONS
-echo Checking advanced sharing permissions...
-powershell -NoProfile -Command ^
-    "$share = Get-WmiObject -Class Win32_Share -Filter \"Name='%ShareName%'\"; if ($share) { $path = $share.Path; $tmp = (net share %ShareName%); if ($tmp -notmatch 'Everyone.*Full') { Write-Host '[FIX] Updating share permissions...'; $null = cmd /c 'net share %ShareName%=\"'+$path+'\" /GRANT:Everyone,FULL >nul' } }"
-echo [OK] Share permissions verified.
-echo.
-
-echo Checking NTFS permissions...
-icacls "%SharePath%" | findstr /I "Everyone" | findstr /I "(F)" >nul
-if %ERRORLEVEL% NEQ 0 (
-    echo [FIX] Adding NTFS Full Control for Everyone...
-    icacls "%SharePath%" /grant Everyone:(OI)(CI)F /T /C >nul
+:: -----------------------------------------------------------------
+:: 3. ตั้ง NTFS Permission (Full Control for Everyone)
+:: -----------------------------------------------------------------
+echo [STEP] Setting NTFS permissions for Everyone (Full Control)...
+icacls "%TargetPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARN] Could not apply NTFS permission properly.
+) else (
+    echo [OK] NTFS permissions set.
 )
-echo [OK] NTFS permissions verified.
-echo.
 
-:: -------------------------------------------------------------
-:: STEP 3 - CREATE SHORTCUT TO \\127.0.0.1\Scan
-:: -------------------------------------------------------------
-echo Creating desktop shortcut to "%LocalPath%" ...
-set "VBSFile=%TEMP%\mkshortcut_%RANDOM%.vbs"
+:: -----------------------------------------------------------------
+:: 4. สร้าง Shortcut ชี้ไปที่ \\127.0.0.1\Scan
+:: -----------------------------------------------------------------
+echo [STEP] Creating shortcut on Desktop...
+set "TargetLink=\\127.0.0.1\%ShareName%"
 (
-echo Set oWS = WScript.CreateObject("WScript.Shell")
-echo sLnk = oWS.SpecialFolders("Desktop") ^& "\Scan.lnk"
-echo Set oLink = oWS.CreateShortcut(sLnk)
-echo oLink.TargetPath = "%LocalPath%"
-echo oLink.IconLocation = "%SystemRoot%\System32\SHELL32.dll,3"
-echo oLink.Description = "Open Scan Shared Folder on Localhost"
-echo oLink.Save
-) > "%VBSFile%"
-cscript //nologo "%VBSFile%" >nul 2>&1
-del "%VBSFile%" >nul 2>&1
-echo [OK] Shortcut created successfully.
-echo.
+    echo Set oWS = CreateObject("WScript.Shell")
+    echo sLinkFile = "%ShortcutPath%"
+    echo Set oLink = oWS.CreateShortcut(sLinkFile)
+    echo oLink.TargetPath = "%TargetLink%"
+    echo oLink.Save
+) > "%TEMP%\mkshortcut.vbs"
+cscript //nologo "%TEMP%\mkshortcut.vbs" >nul
+del "%TEMP%\mkshortcut.vbs" >nul
+echo [OK] Shortcut created: "%ShortcutPath%"
+goto :DONE
 
-:: -------------------------------------------------------------
-:: STEP 4 - FINISH
-:: -------------------------------------------------------------
-echo Opening Advanced Network Sharing Settings...
-start "" control.exe /name Microsoft.NetworkAndSharingCenter
+
+:: -----------------------------------------------------------------
+:: 5. ตรวจสอบสิทธิ์ถ้ามีแชร์อยู่แล้ว
+:: -----------------------------------------------------------------
+:CHECK_PERMS
+echo [STEP] Checking permissions on existing share...
+:: ตรวจสิทธิ์ Share (ไม่มีวิธีตรง ต้อง reapply)
+net share %ShareName% /grant:everyone,full >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [WARN] Could not reapply share permission. May already be OK.
+) else (
+    echo [OK] Share permissions confirmed.
+)
+
+:: ตรวจ NTFS Permission
+icacls "%TargetPath%" | find /i "Everyone" | find "F" >nul
+if %errorlevel% neq 0 (
+    echo [FIX] Reapplying NTFS Full Control for Everyone...
+    icacls "%TargetPath%" /grant Everyone:(OI)(CI)F /T >nul
+) else (
+    echo [OK] NTFS permission already correct.
+)
+
+:: ตรวจ Shortcut
+if not exist "%ShortcutPath%" (
+    echo [STEP] Creating missing shortcut...
+    (
+        echo Set oWS = CreateObject("WScript.Shell")
+        echo sLinkFile = "%ShortcutPath%"
+        echo Set oLink = oWS.CreateShortcut(sLinkFile)
+        echo oLink.TargetPath = "\\127.0.0.1\%ShareName%"
+        echo oLink.Save
+    ) > "%TEMP%\mkshortcut.vbs"
+    cscript //nologo "%TEMP%\mkshortcut.vbs" >nul
+    del "%TEMP%\mkshortcut.vbs" >nul
+    echo [OK] Shortcut created.
+) else (
+    echo [OK] Shortcut already exists.
+)
+
+:DONE
 echo.
-echo ================================================================
-echo All tasks completed successfully.
-echo ================================================================
+echo =================================================================
+echo   All tasks completed successfully.
+echo   You can now open: \\127.0.0.1\%ShareName%
+echo =================================================================
 pause
 exit /b
