@@ -1,102 +1,100 @@
 @echo off
 setlocal enabledelayedexpansion
-title Smart Localhost Scan Share Auto-Fix (v4.1)
+title Smart Localhost Scan Share Auto-Fix (v4.2)
 
 echo ================================================================
-echo   Smart Localhost Scan Share Auto-Fix (v4.1)
+echo   Smart Localhost Scan Share Auto-Fix (v4.2)
 echo ================================================================
 echo.
 
-set "ScanName=Scan"
-set "ScanFolder=%USERPROFILE%\Documents\%ScanName%"
-set "DesktopPath=%USERPROFILE%\Desktop"
-
-:: ถ้า Desktop ไม่อยู่ที่นี่ ให้ลอง OneDrive Desktop
-if not exist "%DesktopPath%" (
-    for /f "delims=" %%D in ('dir "%USERPROFILE%\OneDrive*" /ad /b 2^>nul') do (
-        if exist "%USERPROFILE%\%%D\Desktop" (
-            set "DesktopPath=%USERPROFILE%\%%D\Desktop"
-        )
-    )
-)
-
-set "ShortcutFile=%DesktopPath%\%ScanName%.lnk"
-set "VBSFile=%TEMP%\mkshortcut.vbs"
-
-:: -----------------------------------------------------------
-:: 1. ตรวจสอบว่ามีการแชร์อยู่แล้วไหม
-:: -----------------------------------------------------------
+:: -----------------------------
+:: 1. ตรวจสอบว่ามีแชร์อยู่แล้วหรือไม่
+:: -----------------------------
 echo [CHECK] Checking shared folder on \\127.0.0.1 ...
-net view \\127.0.0.1 | find /I "\\127.0.0.1\%ScanName%" >nul 2>&1
-if %errorlevel%==0 (
-    echo [FOUND] \\127.0.0.1\%ScanName% already shared.
-
-    :: ---------------------------------------------------
-    :: 2. ตั้งสิทธิ์ Share และ NTFS ใหม่ให้ Everyone Full
-    :: ---------------------------------------------------
-    echo [FIX] Resetting Share permissions for Everyone Full...
-    net share %ScanName% /grant:everyone,full >nul 2>&1
-
-    echo [FIX] Resetting NTFS permissions for Everyone Full...
-    for /f "tokens=3*" %%A in ('net share ^| find /I "%ScanName%"') do (
-        set "ExistingPath=%%A %%B"
+for /f "skip=2 tokens=1" %%A in ('net view \\127.0.0.1 ^| findstr /I "Scan"') do (
+    if /I "%%A"=="Scan" (
+        set "ScanExists=1"
     )
-    icacls "!ExistingPath!" /grant Everyone:(OI)(CI)F /T >nul
-
-    goto :make_shortcut
 )
 
-:: -----------------------------------------------------------
-:: 3. ถ้าไม่พบการแชร์ → สร้างโฟลเดอร์ใหม่
-:: -----------------------------------------------------------
-echo [MISSING] Shared folder not found.
-echo [CREATE] Creating new folder at "%ScanFolder%"...
-if not exist "%ScanFolder%" mkdir "%ScanFolder%" >nul 2>&1
+if defined ScanExists (
+    echo [FOUND] \\127.0.0.1\Scan already exists.
+    set "ScanFolder="
+    for /f "skip=2 tokens=1,*" %%A in ('net share ^| findstr /I "^Scan"') do set "ScanFolder=%%B"
+    if not defined ScanFolder (
+        echo [WARN] Could not determine physical path of Scan share.
+    ) else (
+        echo [INFO] Physical path: !ScanFolder!
+    )
+) else (
+    echo [MISSING] Shared folder "Scan" not found.
+    set "ScanFolder=%USERPROFILE%\Documents\Scan"
+    echo Creating new folder at "%ScanFolder%"...
+    if not exist "%ScanFolder%" mkdir "%ScanFolder%" >nul 2>&1
+    echo Sharing folder as "Scan"...
+    net share Scan="%ScanFolder%" /grant:Everyone,full >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to create shared folder.
+        pause
+        exit /b 1
+    )
+    echo [OK] Shared folder created: \\127.0.0.1\Scan
+)
 
-echo [SHARE] Sharing folder as "%ScanName%"...
-net share %ScanName%="%ScanFolder%" /grant:everyone,full >nul 2>&1
+:: -----------------------------
+:: 2. ตั้งสิทธิ์ NTFS ให้ Everyone Full Control
+:: -----------------------------
+if not defined ScanFolder set "ScanFolder=%USERPROFILE%\Documents\Scan"
+echo [STEP] Setting NTFS permissions for Everyone (Full Control)...
+icacls "%ScanFolder%" /grant Everyone:"(OI)(CI)F" /T >nul
+if %errorlevel% equ 0 (
+    echo [OK] NTFS permissions set.
+) else (
+    echo [WARN] Failed to apply NTFS permissions.
+)
+
+:: -----------------------------
+:: 3. ตรวจสอบ Share Permission (Advanced Sharing)
+:: -----------------------------
+echo [STEP] Verifying Share Permissions...
+net share Scan | find /I "Everyone" >nul
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to create shared folder "%ScanName%".
-    pause
-    exit /b
+    echo [FIX] Adding Everyone Full Control to Share Permissions...
+    net share Scan /grant:Everyone,full >nul 2>&1
 )
-echo [OK] Shared folder created: \\127.0.0.1\%ScanName%
+echo [OK] Share Permissions verified.
 
-echo [NTFS] Setting NTFS permissions for Everyone (Full Control)...
-icacls "%ScanFolder%" /grant Everyone:(OI)(CI)F /T >nul
-
-:make_shortcut
-:: -----------------------------------------------------------
-:: 4. สร้าง Shortcut ไปยัง \\127.0.0.1\Scan
-:: -----------------------------------------------------------
+:: -----------------------------
+:: 4. สร้าง Shortcut บน Desktop ไปที่ \\127.0.0.1\Scan
+:: -----------------------------
 echo [STEP] Creating shortcut on Desktop...
-echo [INFO] Target: \\127.0.0.1\%ScanName%
-echo [INFO] Desktop: %DesktopPath%
+set "ShortcutFile=%USERPROFILE%\Desktop\Scan.lnk"
+set "VBSFile=%TEMP%\mkshortcut.vbs"
 
 (
     echo Set oWS = CreateObject("WScript.Shell")
     echo sLinkFile = "%ShortcutFile%"
     echo Set oLink = oWS.CreateShortcut(sLinkFile)
-    echo oLink.TargetPath = "\\127.0.0.1\%ScanName%"
+    echo oLink.TargetPath = "\\127.0.0.1\Scan"
     echo oLink.IconLocation = "imageres.dll,3"
     echo oLink.Save
 ) > "%VBSFile%"
 
-:: ใช้ wscript ก่อน ถ้าไม่ได้ ค่อยลอง cscript
-wscript "%VBSFile%" >nul 2>&1
-if not exist "%ShortcutFile%" cscript //nologo "%VBSFile%" >nul 2>&1
+cscript //nologo "%VBSFile%" >nul 2>&1
 del "%VBSFile%" >nul 2>&1
 
 if exist "%ShortcutFile%" (
-    echo [OK] Shortcut created successfully: "%ShortcutFile%"
+    echo [OK] Shortcut created: "%ShortcutFile%"
 ) else (
     echo [ERROR] Failed to create shortcut.
 )
 
+:: -----------------------------
+:: 5. จบการทำงาน
+:: -----------------------------
 echo.
 echo ================================================================
-echo   All tasks completed successfully!
-echo   Folder available at: \\127.0.0.1\%ScanName%
+echo   All tasks completed successfully.
+echo   You can now open: \\127.0.0.1\Scan
 echo ================================================================
-pause
-exit /b
+exit /b 0
