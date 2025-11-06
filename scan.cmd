@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.7 - Powershell Safe)
+title Setup Scan Share (Smart Logic v12.0 - Ultimate Stable)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -14,11 +14,11 @@ set "FolderBaseDir=%USERPROFILE%\Documents"
 set "FullFolderPath=%FolderBaseDir%\%FolderName%"
 set "ShareTemp=%TEMP%\sharelist_%RANDOM%.txt"
 
-echo Target Folder Path: "%FullFolderPath%"
+echo Target Folder Path (default): "%FullFolderPath%"
 echo.
 
 :: -------------------------------
-:: STEP 1 — Check if a share named "Scan" exists
+:: STEP 1 — Check if share exists
 :: -------------------------------
 net share > "%ShareTemp%"
 findstr /I /B /C:"%FolderName% " "%ShareTemp%" >nul
@@ -28,78 +28,68 @@ if %ERRORLEVEL% equ 0 (
 
     call :GetExistingPath "%FolderName%"
     if defined ExistingPath (
-        echo Share path: "%ExistingPath%"
+        echo Share path detected: "%ExistingPath%"
         echo.
 
-        echo Verifying Share permissions...
-        net share "%FolderName%" /GRANT:Everyone,FULL >nul
-        echo [OK] Share permissions ensured.
+        echo [1/3] Ensuring Share Permissions (Full Control for Everyone)...
+        call :FixSharePerm "%FolderName%"
+        echo [OK] Share permissions corrected.
         echo.
 
-        echo Verifying NTFS permissions...
+        echo [2/3] Ensuring NTFS Permissions...
         call :SetNTFSPerms "%ExistingPath%"
         echo [OK] NTFS permissions ensured.
         echo.
+
+        echo [3/3] Creating Shortcut...
+        call :CreateShortcut "%ExistingPath%"
+        echo [OK] Shortcut created on Desktop.
+        echo.
+
+        goto SETTINGS
     )
-    del "%ShareTemp%" >nul 2>&1
-    goto CREATE_SHORTCUT
-)
+) else (
+    echo [NOT FOUND] No share named "%FolderName%" found.
+    echo Creating folder and new share...
+    echo.
 
-echo [NOT FOUND] No share named "%FolderName%" found.
-echo Creating folder and new share...
-echo.
-
-if not exist "%FullFolderPath%" (
-    mkdir "%FullFolderPath%" >nul 2>&1
-    if exist "%FullFolderPath%" (
-        echo [OK] Folder created: "%FullFolderPath%"
+    if not exist "%FullFolderPath%" (
+        mkdir "%FullFolderPath%" >nul 2>&1
+        if exist "%FullFolderPath%" (
+            echo [OK] Folder created: "%FullFolderPath%"
+        ) else (
+            echo [FAIL] Could not create folder.
+            goto END
+        )
     ) else (
-        echo [FAIL] Could not create folder.
+        echo [OK] Folder already exists: "%FullFolderPath%"
+    )
+    echo.
+
+    echo Sharing folder as "%FolderName%"...
+    net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
+    if %ERRORLEVEL% equ 0 (
+        echo [OK] Shared successfully.
+    ) else (
+        echo [FAIL] Failed to share folder.
         goto END
     )
-) else (
-    echo [OK] Folder already exists: "%FullFolderPath%"
-)
-echo.
+    echo.
 
-echo Sharing folder as "%FolderName%"...
-net share "%FolderName%"="%FullFolderPath%" /GRANT:Everyone,FULL >nul
-if %ERRORLEVEL% equ 0 (
-    echo [OK] Shared successfully.
-) else (
-    echo [FAIL] Failed to share folder.
-    goto END
-)
-echo.
+    echo Setting NTFS permissions...
+    call :SetNTFSPerms "%FullFolderPath%"
+    echo [OK] NTFS permissions set.
+    echo.
 
-echo Setting NTFS permissions...
-call :SetNTFSPerms "%FullFolderPath%"
-echo [OK] NTFS permissions set.
-echo.
+    echo Creating shortcut "Scan" on Desktop...
+    call :CreateShortcut "%FullFolderPath%"
+    echo [OK] Shortcut created.
+    echo.
+)
 
 del "%ShareTemp%" >nul 2>&1
 
-:: -------------------------------
-:: STEP 6 — Create Desktop Shortcut
-:: -------------------------------
-:CREATE_SHORTCUT
-echo Creating shortcut "Scan" on Desktop...
-powershell -NoProfile -Command ^
-  "$d=[Environment]::GetFolderPath('Desktop');" ^
-  "$s=New-Object -ComObject WScript.Shell;" ^
-  "$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));" ^
-  "$l.TargetPath='%FullFolderPath%';$l.Save()" >nul 2>&1
-
-if %ERRORLEVEL% equ 0 (
-    echo [OK] Shortcut created on Desktop.
-) else (
-    echo [WARN] Could not create shortcut.
-)
-echo.
-
-:: -------------------------------
-:: STEP 7 — Open Advanced Sharing Settings
-:: -------------------------------
+:SETTINGS
 echo Opening Advanced Network and Sharing Settings...
 start "" control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
 echo.
@@ -123,10 +113,29 @@ for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
 exit /b
 
 :: -------------------------------------------------
-:: Function: SetNTFSPerms  (now using PowerShell)
+:: Function: SetNTFSPerms (PowerShell safe)
 :: -------------------------------------------------
 :SetNTFSPerms
 echo Applying NTFS permissions to: %~1
 powershell -NoProfile -Command ^
   "Start-Process icacls -ArgumentList '\"%~1\" /grant Everyone:(OI)(CI)F /T' -Wait -WindowStyle Hidden" >nul 2>&1
+exit /b
+
+:: -------------------------------------------------
+:: Function: FixSharePerm (WMI)
+:: -------------------------------------------------
+:FixSharePerm
+powershell -NoProfile -Command ^
+  "$s=Get-WmiObject -Class Win32_Share -Filter \"Name='%~1'\"; if($s){$s.Delete()|Out-Null; New-SmbShare -Name '%~1' -Path (Get-Item $s.Path).FullName -FullAccess 'Everyone'}" >nul 2>&1
+exit /b
+
+:: -------------------------------------------------
+:: Function: CreateShortcut
+:: -------------------------------------------------
+:CreateShortcut
+powershell -NoProfile -Command ^
+  "$d=[Environment]::GetFolderPath('Desktop');" ^
+  "$s=New-Object -ComObject WScript.Shell;" ^
+  "$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));" ^
+  "$l.TargetPath='%~1';$l.Save()" >nul 2>&1
 exit /b
