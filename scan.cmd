@@ -1,9 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
-title Smart Setup: Localhost Scan Folder Auto-Fix (v3.6)
+title Smart Setup: Localhost Scan Folder Auto-Fix (v3.7)
 
 echo ================================================================
-echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.6)
+echo   Smart Setup: Localhost Scan Folder Auto-Fix (v3.7)
 echo ================================================================
 echo.
 
