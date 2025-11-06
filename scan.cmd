@@ -1,5 +1,5 @@
 @echo off
-title สร้างและตั้งค่าแชร์โฟลเดอร์ Scan (v2 - ตรวจสอบก่อน)
+title สร้างและตั้งค่าแชร์โฟลเดอร์ Scan (v3 - แก้ไข Findstr)
 chcp 874 > nul
 
 echo =================================================================
@@ -27,10 +27,12 @@ if %ERRORLEVEL% equ 0 (
     :: 2.2 ตรวจสอบว่า Path ถูกต้องหรือไม่
     echo กำลังตรวจสอบเส้นทาง (Path) ของ Share ที่มีอยู่...
     
-    :: ใช้ for /f เพื่อดึงค่า Path จากคำสั่ง net share
-    for /f "tokens=1,*" %%a in ('net share %FolderName% ^| findstr /I /C:"Path "') do (
+    :: [FIX] ใช้ 'skip=1' และ 'tokens=1,*' เพื่อดึงบรรทัดที่ 2 (เส้นทาง) โดยไม่สนว่าเป็นภาษาอะไร
+    for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName%') do (
         set "ExistingPath=%%b"
+        goto :GotPath
     )
+    :GotPath
     
     :: ลบช่องว่างนำหน้าออกจาก Path ที่ดึงมาได้
     if defined ExistingPath (
