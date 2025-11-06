@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.5 - Parser Safe)
+title Setup Scan Share (Smart Logic v11.6 - Parser Proof)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -37,7 +37,7 @@ if %ERRORLEVEL% equ 0 (
         echo.
 
         echo Verifying NTFS permissions...
-        icacls "%ExistingPath%" /grant Everyone:^(OI^)(CI^)F /T >nul 2>&1
+        call :SetNTFSPerms "%ExistingPath%"
         echo [OK] NTFS permissions ensured.
         echo.
     )
@@ -73,7 +73,7 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 echo Setting NTFS permissions...
-icacls "%FullFolderPath%" /grant Everyone:^(OI^)(CI^)F /T >nul 2>&1
+call :SetNTFSPerms "%FullFolderPath%"
 echo [OK] NTFS permissions set.
 echo.
 
@@ -120,4 +120,12 @@ for /f "skip=1 tokens=1,*" %%a in ('net share %~1 2^>nul') do (
     if not defined ExistingPath set "ExistingPath=%%b"
 )
 for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
+exit /b
+
+:: -------------------------------------------------
+:: Function: SetNTFSPerms
+:: -------------------------------------------------
+:SetNTFSPerms
+echo Applying NTFS permissions to: %~1
+icacls "%~1" /grant Everyone:(OI)(CI)F /T >nul 2>&1
 exit /b
