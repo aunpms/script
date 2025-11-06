@@ -1,6 +1,6 @@
 @echo off
-title Setup Scan Share (Smart Logic v12.1 - Ultimate Stable)
-setlocal enableextensions enabledelayedexpansion
+title Setup Scan Share (Smart Logic v12.2 - Super Stable)
+setlocal enableextensions
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
 echo =================================================================
@@ -115,31 +115,28 @@ exit /b
 
 
 :: -------------------------------------------------
-:: Function: SetNTFSPerms (Fixed Escape)
+:: Function: SetNTFSPerms (safe mode)
 :: -------------------------------------------------
 :SetNTFSPerms
 echo Applying NTFS permissions to: %~1
-powershell -NoProfile -Command ^
-  "icacls '%~1' /grant Everyone:`(OI`)`(CI`)F /T" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Start-Process 'icacls.exe' -ArgumentList @('%~1','/grant','Everyone:(OI)(CI)F','/T') -Wait -WindowStyle Hidden" >nul 2>&1
 exit /b
 
 
 :: -------------------------------------------------
-:: Function: FixSharePerm (Modern SMB)
+:: Function: FixSharePerm (safe, modern SMB)
 :: -------------------------------------------------
 :FixSharePerm
-powershell -NoProfile -Command ^
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$s=Get-SmbShare -Name '%~1' -ErrorAction SilentlyContinue; if($s){$p=$s.Path; Remove-SmbShare -Name '%~1' -Force; New-SmbShare -Name '%~1' -Path $p -FullAccess 'Everyone'}" >nul 2>&1
 exit /b
 
 
 :: -------------------------------------------------
-:: Function: CreateShortcut (Correct Target Path)
+:: Function: CreateShortcut
 :: -------------------------------------------------
 :CreateShortcut
-powershell -NoProfile -Command ^
-  "$d=[Environment]::GetFolderPath('Desktop');" ^
-  "$s=New-Object -ComObject WScript.Shell;" ^
-  "$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));" ^
-  "$l.TargetPath='%~1';$l.Save()" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$d=[Environment]::GetFolderPath('Desktop');$s=New-Object -ComObject WScript.Shell;$l=$s.CreateShortcut((Join-Path $d 'Scan.lnk'));$l.TargetPath='%~1';$l.Save()" >nul 2>&1
 exit /b
