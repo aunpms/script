@@ -1,7 +1,6 @@
 @echo off
-:: สคริปนี้ถูกบันทึกเป็น UTF-8, บรรทัดนี้จำเป็นมาก
-chcp 65001 > nul
-title สร้างและตั้งค่าแชร์โฟลเดอร์ Scan (v4 - UTF8 + Findstr Fix)
+title สร้างและตั้งค่าแชร์โฟลเดอร์ Scan (v3 - แก้ไข Findstr)
+chcp 874 > nul
 
 echo =================================================================
 echo กำลังดำเนินการ: สร้างและตั้งค่าแชร์โฟลเดอร์ "Scan"
@@ -28,7 +27,7 @@ if %ERRORLEVEL% equ 0 (
     :: 2.2 ตรวจสอบว่า Path ถูกต้องหรือไม่
     echo กำลังตรวจสอบเส้นทาง (Path) ของ Share ที่มีอยู่...
     
-    :: [FIX v3] ใช้ 'skip=1' และ 'tokens=1,*' เพื่อดึงบรรทัดที่ 2 (เส้นทาง) โดยไม่สนว่าเป็นภาษาอะไร
+    :: [FIX] ใช้ 'skip=1' และ 'tokens=1,*' เพื่อดึงบรรทัดที่ 2 (เส้นทาง) โดยไม่สนว่าเป็นภาษาอะไร
     for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName%') do (
         set "ExistingPath=%%b"
         goto :GotPath
@@ -61,86 +60,4 @@ if %ERRORLEVEL% equ 0 (
 
 ) else (
     :: 2.4 ถ้าไม่มี Share "Scan" - ไปที่ขั้นตอนการสร้างใหม่
-    echo [? ตรวจไม่พบ] ไม่พบ Share ชื่อ "%FolderName%", กำลังเริ่มสร้างใหม่...
-    echo.
-    goto :CREATE_NEW_SHARE
-)
-
-
-:: =================================================================
-:: ส่วนของการสร้างใหม่ (สำหรับ Share ที่ยังไม่มี หรือ Path ผิด)
-:: =================================================================
-:CREATE_NEW_SHARE
-echo --- กำลังเริ่มกระบวนการสร้าง Share ใหม่ ---
-:: 3. สร้างโฟลเดอร์
-mkdir "%FullFolderPath%"
-if exist "%FullFolderPath%" (
-    echo [? สำเร็จ] สร้างโฟลเดอร์แล้ว
-) else (
-    echo [? ล้มเหลว] ไม่สามารถสร้างโฟลเดอร์ได้
-    goto :END_SCRIPT
-)
-echo.
-
-:: 4. แชร์โฟลเดอร์
-echo กำลังแชร์โฟลเดอร์ (GRANT)...
-net share %FolderName%="%FullFolderPath%" /GRANT:Everyone,FULL
-echo [? สำเร็จ] แชร์โฟลเดอร์ "%FolderName%" เรียบร้อย
-echo ** เส้นทาง Network: \\%COMPUTERNAME%\%FolderName% **
-echo.
-
-:: 5. ตั้งค่าสิทธิ์ NTFS
-echo กำลังตั้งค่าสิทธิ์ NTFS...
-icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T
-echo [? สำเร็จ] ตั้งค่าสิทธิ์ NTFS: Everyone Full Control เรียบร้อย
-echo.
-
-:: 6. สร้าง Shortcut
-echo กำลังสร้าง Shortcut...
-goto :CREATE_SHORTCUT
-
-
-:: =================================================================
-:: ส่วนของการตรวจสอบสิทธิ์ (สำหรับ Share ที่มีอยู่และ Path ถูกต้อง)
-:: =================================================================
-:VERIFY_PERMISSIONS
-echo --- กำลังตรวจสอบและบังคับใช้สิทธิ์ ---
-:: 4. (ตรวจสอบ) บังคับใช้สิทธิ์การแชร์
-echo กำลังบังคับใช้สิทธิ์การแชร์ (GRANT)...
-net share %FolderName% /GRANT:Everyone,FULL
-echo [? สำเร็จ] ตั้งค่าสิทธิ์แชร์: Everyone Full Control เรียบร้อย
-echo.
-
-:: 5. (ตรวจสอบ) บังคับใช้สิทธิ์ NTFS
-echo กำลังบังคับใช้สิทธิ์ NTFS...
-icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T
-echo [? สำเร็จ] ตั้งค่าสิทธิ์ NTFS: Everyone Full Control เรียบร้อย
-echo.
-
-:: 6. (ตรวจสอบ) สร้าง Shortcut
-echo กำลังตรวจสอบ/สร้าง Shortcut...
-goto :CREATE_SHORTCUT
-
-
-:: =================================================================
-:: ส่วนที่ทำร่วมกัน
-:: =================================================================
-:CREATE_SHORTCUT
-powershell -Command "$Desktop = Join-Path $env:PUBLIC -ChildPath 'Desktop'; If (Test-Path $Desktop) { $s=(New-Object -COM WScript.Shell).CreateShortcut((Join-Path $Desktop 'Scan.lnk')); $s.TargetPath='%FullFolderPath%'; $s.Save(); Exit 0 } Else { Write-Error 'Public Desktop not found.'; Exit 1 }"
-if %ERRORLEVEL% equ 0 (
-    echo [? สำเร็จ] สร้าง/อัปเดต Shortcut บน Desktop แล้ว
-) else (
-    echo [? ล้มเหลว] สร้าง Shortcut ไม่สำเร็จ (อาจไม่มี Public Desktop)
-)
-echo.
-
-:: 7. เปิด Advanced Sharing Settings (ทำทุกกรณี)
-echo กำลังเปิดหน้าต่าง "Advanced Sharing Settings"...
-control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
-
-echo =================================================================
-echo === การดำเนินการเสร็จสิ้น ===
-echo =================================================================
-
-:END_SCRIPT
-pause
+    echo [? ต
