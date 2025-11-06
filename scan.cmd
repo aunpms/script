@@ -1,15 +1,26 @@
 @echo off
 setlocal enabledelayedexpansion
-title Smart Localhost Scan Share Auto-Fix (v4.0)
+title Smart Localhost Scan Share Auto-Fix (v4.1)
 
 echo ================================================================
-echo   Smart Localhost Scan Share Auto-Fix (v4.0)
+echo   Smart Localhost Scan Share Auto-Fix (v4.1)
 echo ================================================================
 echo.
 
 set "ScanName=Scan"
 set "ScanFolder=%USERPROFILE%\Documents\%ScanName%"
-set "ShortcutFile=%USERPROFILE%\Desktop\%ScanName%.lnk"
+set "DesktopPath=%USERPROFILE%\Desktop"
+
+:: ถ้า Desktop ไม่อยู่ที่นี่ ให้ลอง OneDrive Desktop
+if not exist "%DesktopPath%" (
+    for /f "delims=" %%D in ('dir "%USERPROFILE%\OneDrive*" /ad /b 2^>nul') do (
+        if exist "%USERPROFILE%\%%D\Desktop" (
+            set "DesktopPath=%USERPROFILE%\%%D\Desktop"
+        )
+    )
+)
+
+set "ShortcutFile=%DesktopPath%\%ScanName%.lnk"
 set "VBSFile=%TEMP%\mkshortcut.vbs"
 
 :: -----------------------------------------------------------
@@ -59,6 +70,9 @@ icacls "%ScanFolder%" /grant Everyone:(OI)(CI)F /T >nul
 :: 4. สร้าง Shortcut ไปยัง \\127.0.0.1\Scan
 :: -----------------------------------------------------------
 echo [STEP] Creating shortcut on Desktop...
+echo [INFO] Target: \\127.0.0.1\%ScanName%
+echo [INFO] Desktop: %DesktopPath%
+
 (
     echo Set oWS = CreateObject("WScript.Shell")
     echo sLinkFile = "%ShortcutFile%"
@@ -68,11 +82,13 @@ echo [STEP] Creating shortcut on Desktop...
     echo oLink.Save
 ) > "%VBSFile%"
 
-cscript //nologo "%VBSFile%" >nul 2>&1
+:: ใช้ wscript ก่อน ถ้าไม่ได้ ค่อยลอง cscript
+wscript "%VBSFile%" >nul 2>&1
+if not exist "%ShortcutFile%" cscript //nologo "%VBSFile%" >nul 2>&1
 del "%VBSFile%" >nul 2>&1
 
 if exist "%ShortcutFile%" (
-    echo [OK] Shortcut created: "%ShortcutFile%"
+    echo [OK] Shortcut created successfully: "%ShortcutFile%"
 ) else (
     echo [ERROR] Failed to create shortcut.
 )
