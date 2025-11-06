@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (v6 - English Fix + Findstr Fix)
+title Setup Scan Share (v7 - English + Findstr /B Fix)
 :: No CHCP needed for English
 
 echo =================================================================
@@ -22,7 +22,10 @@ echo Checking if share name "%FolderName%" already exists...
 
 :: [FIX] Use a temp file instead of a pipe (|) for reliability
 net share > "%ShareListFile%"
-findstr /I /C:"%FolderName% " "%ShareListFile%" > nul
+
+:: [FIX v7] Add /B to match only at the BEGINNING of the line
+:: This prevents false positives from shares like "MyScan"
+findstr /I /B /C:"%FolderName% " "%ShareListFile%" > nul
 
 if %ERRORLEVEL% equ 0 (
     :: 2.1 If "Scan" share exists
