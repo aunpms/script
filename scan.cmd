@@ -1,63 +1,146 @@
 @echo off
-title สร้างและตั้งค่าแชร์โฟลเดอร์ Scan (v3 - แก้ไข Findstr)
-chcp 874 > nul
+title Setup Scan Share (v5 - English Fix)
+:: No CHCP needed for English
 
 echo =================================================================
-echo กำลังดำเนินการ: สร้างและตั้งค่าแชร์โฟลเดอร์ "Scan"
+echo Now processing: Create and configure "Scan" shared folder
 echo =================================================================
 echo.
 
-:: 1. กำหนดชื่อและเส้นทางของโฟลเดอร์
+:: 1. Define folder name and path
 set "FolderName=Scan"
 set "FolderBaseDir=%USERPROFILE%\Documents"
 set "FullFolderPath=%FolderBaseDir%\%FolderName%"
 set "ExistingPath="
 
-echo โฟลเดอร์เป้าหมาย: "%FullFolderPath%"
+echo Target folder: "%FullFolderPath%"
 echo.
 
-:: 2. ตรวจสอบว่ามี Share "Scan" อยู่แล้วหรือไม่
-echo กำลังตรวจสอบว่ามี Share ชื่อ "%FolderName%" อยู่หรือไม่...
+:: 2. Check if "Scan" share already exists
+echo Checking if share name "%FolderName%" already exists...
 net share | findstr /I /C:"%FolderName% " > nul
 
 if %ERRORLEVEL% equ 0 (
-    :: 2.1 ถ้ามี Share "Scan" อยู่แล้ว
-    echo [? ตรวจพบ] มี Share ชื่อ "%FolderName%" อยู่แล้ว
+    :: 2.1 If "Scan" share exists
+    echo [FOUND] Share name "%FolderName%" already exists.
     
-    :: 2.2 ตรวจสอบว่า Path ถูกต้องหรือไม่
-    echo กำลังตรวจสอบเส้นทาง (Path) ของ Share ที่มีอยู่...
+    :: 2.2 Check if the path is correct
+    echo Checking existing share path...
     
-    :: [FIX] ใช้ 'skip=1' และ 'tokens=1,*' เพื่อดึงบรรทัดที่ 2 (เส้นทาง) โดยไม่สนว่าเป็นภาษาอะไร
+    :: [FIX] Use 'skip=1' and 'tokens=1,*' to get the 2nd line (the path)
+    :: This works regardless of the OS language.
     for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName%') do (
         set "ExistingPath=%%b"
         goto :GotPath
     )
     :GotPath
     
-    :: ลบช่องว่างนำหน้าออกจาก Path ที่ดึงมาได้
+    :: Trim leading spaces from the path
     if defined ExistingPath (
         for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
     )
 
-    echo   - เส้นทางที่ต้องการ: "%FullFolderPath%"
-    echo   - เส้นทางปัจจุบัน:   "%ExistingPath%"
+    echo   - Required Path: "%FullFolderPath%"
+    echo   - Current Path:  "%ExistingPath%"
     echo.
 
-    :: 2.3 เปรียบเทียบ Path (แบบไม่สนตัวพิมพ์เล็ก/ใหญ่)
+    :: 2.3 Compare paths (case-insensitive)
     if /I "%ExistingPath%" == "%FullFolderPath%" (
-        :: Path ถูกต้อง - ไปที่ขั้นตอนการตรวจสอบสิทธิ์
-        echo [? สำเร็จ] Path ถูกต้อง, กำลังไปที่ขั้นตอนตรวจสอบสิทธิ์...
+        :: Path is correct - proceed to verify permissions
+        echo [OK] Path is correct. Proceeding to verify permissions...
         goto :VERIFY_PERMISSIONS
     ) else (
-        :: Path ไม่ถูกต้อง - ลบ Share เก่าทิ้ง แล้วไปสร้างใหม่
-        echo [! แจ้งเตือน] Path ไม่ถูกต้อง!
-        echo กำลังลบ Share เก่าที่ชี้ไปที่ "%ExistingPath%"...
+        :: Path is incorrect - delete old share and create new one
+        echo [WARNING] Path is incorrect!
+        echo Deleting old share pointing to "%ExistingPath%"...
         net share %FolderName% /delete /Y
-        echo [? สำเร็จ] ลบ Share เก่าเรียบร้อยแล้ว
+        echo [OK] Old share deleted.
         echo.
         goto :CREATE_NEW_SHARE
     )
 
 ) else (
-    :: 2.4 ถ้าไม่มี Share "Scan" - ไปที่ขั้นตอนการสร้างใหม่
-    echo [? ต
+    :: 2.4 If "Scan" share does not exist - proceed to create
+    echo [NOT FOUND] Share name "%FolderName%" not found. Starting creation process...
+    echo.
+    goto :CREATE_NEW_SHARE
+)
+
+
+:: =================================================================
+:: SECTION: CREATE NEW SHARE
+:: =================================================================
+:CREATE_NEW_SHARE
+echo --- Starting new share creation process ---
+:: 3. Create folder
+mkdir "%FullFolderPath%"
+if exist "%FullFolderPath%" (
+    echo [OK] Folder created.
+) else (
+    echo [FAIL] Could not create folder.
+    goto :END_SCRIPT
+)
+echo.
+
+:: 4. Share the folder
+echo Sharing folder (GRANT)...
+net share %FolderName%="%FullFolderPath%" /GRANT:Everyone,FULL
+echo [OK] Folder shared as "%FolderName%".
+echo ** Network Path: \\%COMPUTERNAME%\%FolderName% **
+echo.
+
+:: 5. Set NTFS permissions
+echo Setting NTFS permissions...
+icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T
+echo [OK] NTFS permissions set: Everyone Full Control.
+echo.
+
+:: 6. Create Shortcut
+echo Creating shortcut...
+goto :CREATE_SHORTCUT
+
+
+:: =================================================================
+:: SECTION: VERIFY EXISTING PERMISSIONS
+:: =================================================================
+:VERIFY_PERMISSIONS
+echo --- Verifying and enforcing permissions ---
+:: 4. (Verify) Enforce Share permissions
+echo Enforcing Share permissions (GRANT)...
+net share %FolderName% /GRANT:Everyone,FULL
+echo [OK] Share permissions set: Everyone Full Control.
+echo.
+
+:: 5. (Verify) Enforce NTFS permissions
+echo Enforcing NTFS permissions...
+icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T
+echo [OK] NTFS permissions set: Everyone Full Control.
+echo.
+
+:: 6. (Verify) Create Shortcut
+echo Checking/Creating shortcut...
+goto :CREATE_SHORTCUT
+
+
+:: =================================================================
+:: COMMON SECTION
+:: =================================================================
+:CREATE_SHORTCUT
+powershell -Command "$Desktop = Join-Path $env:PUBLIC -ChildPath 'Desktop'; If (Test-Path $Desktop) { $s=(New-Object -COM WScript.Shell).CreateShortcut((Join-Path $Desktop 'Scan.lnk')); $s.TargetPath='%FullFolderPath%'; $s.Save(); Exit 0 } Else { Write-Error 'Public Desktop not found.'; Exit 1 }"
+if %ERRORLEVEL% equ 0 (
+    echo [OK] Shortcut created/updated on Public Desktop.
+) else (
+    echo [FAIL] Could not create shortcut (Public Desktop might not exist).
+)
+echo.
+
+:: 7. Open Advanced Sharing Settings (runs in all cases)
+echo Opening "Advanced Sharing Settings" window...
+control.exe /name Microsoft.NetworkAndSharingCenter /page Advanced
+
+echo =================================================================
+echo === Operation Completed ===
+echo =================================================================
+
+:END_SCRIPT
+pause
