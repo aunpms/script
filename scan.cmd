@@ -1,5 +1,5 @@
 @echo off
-title Setup Scan Share (Smart Logic v11.2)
+title Setup Scan Share (Smart Logic v11.3 - Stable)
 setlocal enableextensions enabledelayedexpansion
 echo =================================================================
 echo     Smart Setup: Verify or Create "Scan" Shared Folder
@@ -12,6 +12,7 @@ echo.
 set "FolderName=Scan"
 set "FolderBaseDir=%USERPROFILE%\Documents"
 set "FullFolderPath=%FolderBaseDir%\%FolderName%"
+set "ShareTemp=%TEMP%\sharelist_%RANDOM%.txt"
 
 echo Target Folder Path: "%FullFolderPath%"
 echo.
@@ -19,20 +20,25 @@ echo.
 :: -------------------------------
 :: STEP 1 — Check if a share named "Scan" exists
 :: -------------------------------
-set "ExistingPath="
-
-for /f "usebackq delims=" %%P in (
-  `powershell -NoProfile -Command "try { $s = Get-WmiObject -Class Win32_Share -Filter 'Name=\"%FolderName%\"' -ErrorAction SilentlyContinue; if ($s) { $s.Path } } catch {}"`
-) do (
-  set "ExistingPath=%%P"
-)
-
-if defined ExistingPath (
+net share > "%ShareTemp%"
+findstr /I /B /C:"%FolderName% " "%ShareTemp%" >nul
+if %ERRORLEVEL% equ 0 (
     echo [FOUND] Shared folder "%FolderName%" already exists.
-    echo Share path: "%ExistingPath%"
     echo.
 
-    echo Verifying Share permissions (Everyone = Full Control)...
+    :: Get the existing shared path
+    for /f "skip=1 tokens=1,*" %%a in ('net share %FolderName% 2^>nul') do (
+        set "ExistingPath=%%b"
+        goto GotPath
+    )
+    :GotPath
+    if defined ExistingPath (
+        for /f "tokens=* delims= " %%i in ("%ExistingPath%") do set "ExistingPath=%%i"
+        echo Share path: "%ExistingPath%"
+    )
+    echo.
+
+    echo Verifying Share permissions...
     net share "%FolderName%" /GRANT:Everyone,FULL >nul
     echo [OK] Share permissions ensured.
     echo.
@@ -42,10 +48,11 @@ if defined ExistingPath (
     echo [OK] NTFS permissions ensured.
     echo.
 
+    del "%ShareTemp%" >nul 2>&1
     goto CREATE_SHORTCUT
 ) else (
-    echo [NOT FOUND] No existing share named "%FolderName%".
-    echo Creating new folder and share...
+    echo [NOT FOUND] No share named "%FolderName%" found.
+    echo Creating folder and new share...
     echo.
 
     if not exist "%FullFolderPath%" (
@@ -71,14 +78,15 @@ if defined ExistingPath (
     )
     echo.
 
-    echo Setting NTFS permissions (Everyone Full Control)...
+    echo Setting NTFS permissions...
     icacls "%FullFolderPath%" /grant Everyone:(OI)(CI)F /T >nul 2>&1
     echo [OK] NTFS permissions set.
     echo.
 )
+del "%ShareTemp%" >nul 2>&1
 
 :: -------------------------------
-:: STEP 6 — Create Desktop Shortcut (Safe One-Liner)
+:: STEP 6 — Create Desktop Shortcut
 :: -------------------------------
 :CREATE_SHORTCUT
 echo Creating shortcut "Scan" on Desktop...
