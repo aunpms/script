@@ -129,7 +129,7 @@ goto :CREATE_SHORTCUT
 :: COMMON SECTION
 :: =================================================================
 :CREATE_SHORTCUT
-powershell -Command "$Desktop = Join-Path $env:PUBLIC -ChildPath 'Desktop'; If (Test-Path $Desktop) { $s=(New-Object -COM WScript.Shell).CreateShortcut((Join-Path $Desktop 'Scan.lnk')); $s.Save(); Exit 0 } Else { Write-Error 'Public Desktop not found.'; Exit 1 }"
+powershell -Command "$Desktop = Join-Path $env:PUBLIC -ChildPath 'Desktop'; If (Test-Path $Desktop) { $s=(New-Object -COM WScript.Shell).CreateShortcut((Join-Path $Desktop 'Scan.lnk')); $s.TargetPath='%FullFolderPath%'; $s.Save(); Exit 0 } Else { Write-Error 'Public Desktop not found.'; Exit 1 }"
 if %ERRORLEVEL% equ 0 (
     echo [OK] Shortcut created/updated on Public Desktop.
 ) else (
